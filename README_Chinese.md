@@ -1,5 +1,6 @@
 <img src="assets/album.png" alt="cover" width="50%" style="display: block; margin-left: auto; margin-right: auto;" />
 
+中文版本 | [English](README.md)
 
 # 在 CentOS 7 上使用自定义 glibc 2.28 运行 OpenCode
 
@@ -81,7 +82,7 @@ hostnamectl
 - Make 4.2 安装路径：`$HOME/opt/make-4.2`
 - glibc 2.28 安装路径：`$HOME/opt/glibc-2.28`
 - OpenCode 二进制路径：`$HOME/.opencode/bin/opencode`
-- OpenCode 启动脚本：`$HOME/opencode_with_custom_glibc.sh`
+- OpenCode 启动脚本：`$HOME/scripts/opencode_with_custom_glibc.sh`
 
 ### 关键环境变量
 
@@ -431,7 +432,7 @@ patchelf --version
 
 ### 5.2 创建 OpenCode 启动脚本
 
-创建脚本 `~/opencode_with_custom_glibc.sh`：
+创建脚本 `~/scripts/opencode_with_custom_glibc.sh`：
 
 ```bash
 #!/bin/bash
@@ -555,7 +556,7 @@ chmod +x ~/opencode_with_custom_glibc.sh
 ```bash
 # opencode 命令别名，使用自定义 glibc 2.28
 opencode() {
-    $HOME/opencode_with_custom_glibc.sh "$@"
+    $HOME/scripts/opencode_with_custom_glibc.sh "$@"
 }
 
 # 确保 opencode 在 PATH 中

@@ -1,5 +1,6 @@
 <img src="assets/album.png" alt="cover" width="50%" style="display: block; margin-left: auto; margin-right: auto;" />
 
+[中文版本](README_Chinese.md) | English
 
 # Running OpenCode with Custom glibc 2.28 on CentOS 7
 
@@ -81,7 +82,7 @@ hostnamectl
 - Make 4.2 Installation Path: `$HOME/opt/make-4.2`
 - glibc 2.28 Installation Path: `$HOME/opt/glibc-2.28`
 - OpenCode Binary Path: `$HOME/.opencode/bin/opencode`
-- OpenCode Startup Script: `$HOME/opencode_with_custom_glibc.sh`
+- OpenCode Startup Script: `$HOME/scripts/opencode_with_custom_glibc.sh`
 
 ### Key Environment Variables
 
@@ -431,7 +432,7 @@ patchelf --version
 
 ### 5.2 Create OpenCode Startup Script
 
-Create script `~/opencode_with_custom_glibc.sh`:
+Create script `~/scripts/opencode_with_custom_glibc.sh`:
 
 ```bash
 #!/bin/bash
@@ -555,7 +556,7 @@ Add to `~/.bashrc` or `~/.zshrc`:
 ```bash
 # opencode command alias, using custom glibc 2.28
 opencode() {
-    $HOME/opencode_with_custom_glibc.sh "$@"
+    $HOME/scripts/opencode_with_custom_glibc.sh "$@"
 }
 
 # Ensure opencode is in PATH
