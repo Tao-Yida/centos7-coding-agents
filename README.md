@@ -587,6 +587,8 @@ source ~/.bashrc
 
 ## Step 6: Using OpenCode
 
+**Severe Warning**: Due to environment isolation issues, running OpenCode with custom glibc 2.28 has severe limitations. OpenCode cannot read files or execute commands, making core functionality completely unusable. This solution is **for research and testing purposes Only** and is not recommended for production or any environment requiring actual functionality. See the "Known Issues" section for details.
+
 ### 6.1 Configure OpenCode (Optional, can be completed on the graphical page)
 
 First-time use requires configuring API keys:
@@ -598,6 +600,8 @@ opencode auth login
 Select your preferred LLM provider (recommended: Anthropic).
 
 ### 6.2 Initialize Project
+
+**Important Warning**: Due to the severe environment isolation issue (see "Known Issues" section), **this step is completely unusable**. OpenCode cannot read files or execute commands, so it cannot initialize the project.
 
 Go to your project directory:
 
@@ -661,6 +665,20 @@ When segmentation faults occur, it's usually because of library version incompat
 - **Solution**: There is no direct solution at present, but this issue can be resolved by closing the current terminal window or tab. This issue does not affect the normal use of opencode.
 - **Temporary Relief**: Executing the `reset` command in the terminal may help, but is not guaranteed to completely solve the issue.
 - **Preventive Measures**: If this issue affects your workflow, consider using a dedicated terminal window for opencode.
+
+### Severe Environment Isolation Issue
+
+- **Problem Description**: There is a severe environment isolation issue when running OpenCode with custom glibc 2.28. OpenCode can write files but cannot read files or execute commands. Basic commands such as `ls`, `pwd`, `whoami`, etc., return empty results or no output.
+- **Impact Scope**: This issue makes OpenCode's core functionality completely unusable, especially:
+  - Unable to read and analyze project files
+  - Unable to execute any shell commands
+  - Step 6.2 (Initialize Project) is completely unusable
+  - Any functionality that requires reading the filesystem or executing commands will fail
+- **Status**: This is a known severe bug, and there is currently no solution.
+- **Important Note**: Due to this issue, **it is not recommended to use this solution in production or any environment that requires actual functionality**. This solution is for research and testing purposes only.
+- **Temporary Suggestion**: If you need to use OpenCode for actual work, it is recommended to:
+  - Upgrade to an operating system that supports higher glibc versions (such as CentOS 8/9 or other modern Linux distributions)
+  - Use containerization solutions (such as Docker) to run OpenCode in an environment that supports new glibc versions
 
 ## Troubleshooting
 
