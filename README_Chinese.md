@@ -97,8 +97,9 @@ hostnamectl
 export PATH=$HOME/opt/make-4.2/bin:$HOME/opt/gcc-9.5.0/bin:$PATH
 export LD_LIBRARY_PATH=$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH
 
-# 运行 OpenCode 时使用（由启动脚本自动设置）
-export LD_LIBRARY_PATH=$HOME/opt/glibc-2.28/lib:$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH
+# 注意：运行 OpenCode 时，启动脚本不会设置 LD_LIBRARY_PATH
+# OpenCode 使用 patchelf 修改的解释器自动找到自定义 glibc 2.28
+# 这样可以避免 bash 子进程崩溃（详见"已知问题"章节）
 ```
 
 ### 验证命令
@@ -519,15 +520,20 @@ ORIGINAL_LOCPATH="$LOCPATH"
 ORIGINAL_TERM="$TERM"
 ORIGINAL_TERMCAP="$TERMCAP"
 
-# 设置 LD_LIBRARY_PATH 以确保使用正确的库
-export LD_LIBRARY_PATH="$HOME/opt/glibc-2.28/lib:$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH"
+# 重要：opencode 通过 patchelf 修改了解释器，直接使用自定义 glibc 2.28
+# 因此不需要设置 LD_LIBRARY_PATH，这样可以避免 bash 子进程崩溃
+# 如果设置 LD_LIBRARY_PATH，会被 opencode 的子进程（如 bash）继承
+# 但系统的 bash 是用系统 glibc 2.17 编译的，使用自定义 glibc 会崩溃
+# 不设置 LD_LIBRARY_PATH，opencode 仍然可以正常运行（通过 patchelf 的解释器）
+# 而 bash 子进程会使用系统默认的 glibc，不会崩溃
 
 # 设置安全的语言环境，避免乱码问题
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
-# 设置终端类型为不支持鼠标事件的类型
-export TERM=dumb
+# 设置终端类型为支持正常输出的类型
+# 使用 xterm-256color 而不是 dumb，以确保命令输出正常工作
+export TERM=xterm-256color
 
 # 如果系统有本地化的 gconv 模块，也可以指定 LOCPATH
 if [ -d "$HOME/opt/glibc-2.28/lib/locale" ]; then
@@ -535,6 +541,7 @@ if [ -d "$HOME/opt/glibc-2.28/lib/locale" ]; then
 fi
 
 # 运行修改后的 opencode 并捕获退出码
+# 注意：不设置 LD_LIBRARY_PATH，opencode 通过 patchelf 修改的解释器会自动找到自定义 glibc
 "$MODIFIED_OPENCODE" "$@"
 
 # 保存返回码
@@ -565,11 +572,11 @@ exit $RETURN_CODE
 chmod +x ~/opencode_with_custom_glibc.sh
 ```
 
-### 5.4 配置 shell 别名
+### 5.4 配置 shell 别名和 .bashrc
 
 在 `~/.bashrc` 或 `~/.zshrc` 中添加：
 
-```
+```bash
 # opencode 命令别名，使用自定义 glibc 2.28
 opencode() {
     $HOME/opencode_with_custom_glibc.sh "$@"
@@ -577,6 +584,31 @@ opencode() {
 
 # 确保 opencode 在 PATH 中
 export PATH=$HOME/.opencode/bin:$PATH
+```
+
+**重要**：同时需要在 `~/.bashrc` 中添加以下内容，确保 bash 子进程正常工作：
+
+```bash
+if [[ -n "$CURSOR_AGENT" ]]; then
+    # Agent 运行时使用简化配置
+    PS1='\u@\h \W \$ '
+    # 仅保留必要的PATH设置
+    export PATH=$HOME/.local/bin:$HOME/bin:$HOME/.opencode/bin:$PATH
+    export PATH="/home/taoyida/miniconda3/bin:$PATH"
+    export HF_ENDPOINT=https://hf-mirror.com
+    # 确保输出不被缓冲
+    export PYTHONUNBUFFERED=1
+    # 确保使用 UTF-8 编码
+    export LANG=${LANG:-en_US.UTF-8}
+    export LC_ALL=${LC_ALL:-en_US.UTF-8}
+    # 关键修复：清除 LD_LIBRARY_PATH，避免 bash 崩溃
+    # opencode 通过 patchelf 修改解释器使用自定义 glibc 2.28，不需要 LD_LIBRARY_PATH
+    # 但系统的 bash 是用系统 glibc 2.17 编译的，如果继承包含自定义 glibc 的 LD_LIBRARY_PATH 会崩溃
+    # 清除后，bash 会使用系统默认的 glibc，而 opencode 仍然使用自定义 glibc（通过 patchelf）
+    unset LD_LIBRARY_PATH
+    # 不加载conda环境、NVM等复杂配置，避免干扰Agent
+    return
+fi
 ```
 
 然后重新加载配置：
@@ -587,7 +619,7 @@ source ~/.bashrc
 
 ## 步骤六：使用 OpenCode
 
-**严重警告**：由于环境隔离问题，使用自定义 glibc 2.28 运行 OpenCode 存在严重限制。OpenCode 无法读取文件或执行命令，核心功能完全不可用。本方案**仅适用于研究和测试目的**，不建议在生产环境或任何需要实际功能的环境中使用。详见"已知问题"章节。
+**注意**：之前存在环境隔离问题，但已在最新版本中修复。现在 OpenCode 可以正常读取文件和执行命令。详见"已知问题"章节。
 
 ### 6.1 配置 OpenCode（可选，可在图形化页面完成）
 
@@ -601,7 +633,7 @@ opencode auth login
 
 ### 6.2 初始化项目
 
-**重要警告**：由于严重的环境隔离问题（见"已知问题"章节），**本步骤完全不可用**。OpenCode 无法读取文件或执行命令，因此无法初始化项目。
+**注意**：之前存在环境隔离问题，但已修复。现在可以正常初始化项目。
 
 进入你的项目目录：
 
@@ -666,19 +698,21 @@ opencode
 - **临时缓解**：在终端中执行 `reset` 命令可能会有所帮助，但不保证完全解决。
 - **预防措施**：如果此问题影响您的工作流程，建议为 opencode 使用专用的终端窗口。
 
-### 严重环境隔离问题
+### 严重环境隔离问题（已解决）
 
-- **问题描述**：使用自定义 glibc 2.28 运行 OpenCode 时存在严重的环境隔离问题。OpenCode 能够写入文件，但无法读取文件或执行命令。基础命令如 `ls`、`pwd`、`whoami` 等返回空结果或不返回任何输出。
-- **影响范围**：此问题导致 OpenCode 的核心功能完全不可用，特别是：
-  - 无法读取和分析项目文件
-  - 无法执行任何 shell 命令
-  - 步骤 6.2（初始化项目）完全不可用
-  - 任何需要读取文件系统或执行命令的功能都将失败
-- **状态**：此是一个已知的严重 bug，目前尚无解决方案。
-- **重要提示**：由于此问题，**不建议在生产环境或任何需要实际功能的环境中使用本方案**。本方案仅供研究和测试目的。
-- **临时建议**：如果需要使用 OpenCode 进行实际工作，建议：
-  - 升级到支持更高版本 glibc 的操作系统（如 CentOS 8/9 或其他现代 Linux 发行版）
-  - 使用容器化方案（如 Docker）在支持新版本 glibc 的环境中运行 OpenCode
+- **问题描述**：之前，使用自定义 glibc 2.28 运行 OpenCode 时存在严重的环境隔离问题。OpenCode 能够写入文件，但无法读取文件或执行命令。基础命令如 `ls`、`pwd`、`whoami` 等返回空结果或不返回任何输出，或导致段错误。
+- **根本原因**：问题是由于设置了包含自定义 glibc 2.28 库的 `LD_LIBRARY_PATH` 环境变量。这个环境变量会被 opencode 的子进程（如 bash）继承。但是，系统的 bash 是用系统 glibc 2.17 编译的，尝试使用自定义 glibc 2.28 库会导致 bash 崩溃（段错误）。
+- **解决方案**：
+  1. **在 `opencode_with_custom_glibc.sh` 中**：不设置 `LD_LIBRARY_PATH`。由于 opencode 使用 patchelf 修改的解释器指向自定义 glibc 2.28，它会自动找到正确的库，不需要 `LD_LIBRARY_PATH`。
+  2. **在 `~/.bashrc` 中**：添加对 `CURSOR_AGENT` 环境变量的检查，当它被设置时清除 `LD_LIBRARY_PATH`。这确保 bash 子进程使用系统默认的 glibc。
+  3. **终端类型**：从 `TERM=dumb` 改为 `TERM=xterm-256color`，以确保命令输出正常。
+- **状态**：**已解决** - 问题已修复。OpenCode 现在可以正常读取文件和执行命令。
+- **调试方法**：如果遇到类似问题（命令无输出或段错误）：
+  1. 检查 `LD_LIBRARY_PATH` 是否包含自定义 glibc 路径：`echo $LD_LIBRARY_PATH`
+  2. 测试 bash 使用自定义 glibc：`LD_LIBRARY_PATH="/path/to/custom/glibc/lib:$LD_LIBRARY_PATH" bash -c 'echo test'` - 这应该会崩溃
+  3. 验证修复：确保 `opencode_with_custom_glibc.sh` 没有设置 `LD_LIBRARY_PATH`
+  4. 验证 `.bashrc`：确保它在 `CURSOR_AGENT` 设置时清除 `LD_LIBRARY_PATH`
+  5. 检查 opencode 日志：`tail -f ~/.local/share/opencode/log/*.log` 查看 bash 命令是否正在执行
 
 ## 故障排除
 
@@ -797,6 +831,6 @@ opencode
 
 ---
 
-**最后更新**：2026年1月13日
+**最后更新**：2026年1月16日
 
 **作者**：Yida Tao

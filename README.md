@@ -97,8 +97,9 @@ hostnamectl
 export PATH=$HOME/opt/make-4.2/bin:$HOME/opt/gcc-9.5.0/bin:$PATH
 export LD_LIBRARY_PATH=$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH
 
-# Used when running OpenCode (automatically set by startup script)
-export LD_LIBRARY_PATH=$HOME/opt/glibc-2.28/lib:$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH
+# Note: When running OpenCode, LD_LIBRARY_PATH is NOT set by the startup script
+# OpenCode uses patchelf-modified interpreter to automatically find custom glibc 2.28
+# This avoids bash subprocess crashes (see "Known Issues" section for details)
 ```
 
 ### Verification Commands
@@ -519,15 +520,20 @@ ORIGINAL_LOCPATH="$LOCPATH"
 ORIGINAL_TERM="$TERM"
 ORIGINAL_TERMCAP="$TERMCAP"
 
-# Set LD_LIBRARY_PATH to ensure using correct libraries
-export LD_LIBRARY_PATH="$HOME/opt/glibc-2.28/lib:$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH"
+# IMPORTANT: opencode uses custom glibc 2.28 through patchelf-modified interpreter
+# Therefore, we should NOT set LD_LIBRARY_PATH to avoid bash subprocess crashes
+# If LD_LIBRARY_PATH is set, it will be inherited by opencode's subprocesses (e.g., bash)
+# However, the system's bash is compiled with system glibc 2.17, using custom glibc will crash
+# Without setting LD_LIBRARY_PATH, opencode can still run normally (via patchelf interpreter)
+# And bash subprocesses will use the system default glibc, avoiding crashes
 
 # Set safe locale to avoid encoding issues
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
-# Set terminal type to one that doesn't support mouse events
-export TERM=dumb
+# Set terminal type to one that supports output properly
+# Use xterm-256color instead of dumb to ensure command output works correctly
+export TERM=xterm-256color
 
 # If the system has localized gconv modules, specify LOCPATH as well
 if [ -d "$HOME/opt/glibc-2.28/lib/locale" ]; then
@@ -535,6 +541,7 @@ if [ -d "$HOME/opt/glibc-2.28/lib/locale" ]; then
 fi
 
 # Run the modified opencode and capture exit code
+# Note: Without setting LD_LIBRARY_PATH, opencode will automatically find custom glibc via patchelf-modified interpreter
 "$MODIFIED_OPENCODE" "$@"
 
 # Save return code
@@ -565,7 +572,7 @@ exit $RETURN_CODE
 chmod +x ~/opencode_with_custom_glibc.sh
 ```
 
-### 5.4 Configure Shell Alias
+### 5.4 Configure Shell Alias and .bashrc
 
 Add to `~/.bashrc` or `~/.zshrc`:
 
@@ -579,6 +586,31 @@ opencode() {
 export PATH=$HOME/.opencode/bin:$PATH
 ```
 
+**Important**: Also add the following to `~/.bashrc` to ensure bash subprocesses work correctly:
+
+```bash
+if [[ -n "$CURSOR_AGENT" ]]; then
+    # Agent runtime uses simplified configuration
+    PS1='\u@\h \W \$ '
+    # Only keep necessary PATH settings
+    export PATH=$HOME/.local/bin:$HOME/bin:$HOME/.opencode/bin:$PATH
+    export PATH="/home/taoyida/miniconda3/bin:$PATH"
+    export HF_ENDPOINT=https://hf-mirror.com
+    # Ensure output is not buffered
+    export PYTHONUNBUFFERED=1
+    # Ensure UTF-8 encoding
+    export LANG=${LANG:-en_US.UTF-8}
+    export LC_ALL=${LC_ALL:-en_US.UTF-8}
+    # CRITICAL FIX: Clear LD_LIBRARY_PATH to avoid bash crashes
+    # opencode uses custom glibc 2.28 via patchelf, doesn't need LD_LIBRARY_PATH
+    # But system bash is compiled with system glibc 2.17, inheriting custom glibc LD_LIBRARY_PATH will crash
+    # After clearing, bash will use system default glibc, while opencode still uses custom glibc (via patchelf)
+    unset LD_LIBRARY_PATH
+    # Don't load conda environment, NVM, etc. to avoid interfering with Agent
+    return
+fi
+```
+
 Then reload the configuration:
 
 ```bash
@@ -587,7 +619,7 @@ source ~/.bashrc
 
 ## Step 6: Using OpenCode
 
-**Severe Warning**: Due to environment isolation issues, running OpenCode with custom glibc 2.28 has severe limitations. OpenCode cannot read files or execute commands, making core functionality completely unusable. This solution is **for research and testing purposes Only** and is not recommended for production or any environment requiring actual functionality. See the "Known Issues" section for details.
+**Note**: There was previously an environment isolation issue, but it has been fixed in the latest version. OpenCode can now read files and execute commands normally. See the "Known Issues" section for details.
 
 ### 6.1 Configure OpenCode (Optional, can be completed on the graphical page)
 
@@ -601,7 +633,7 @@ Select your preferred LLM provider (recommended: Anthropic).
 
 ### 6.2 Initialize Project
 
-**Important Warning**: Due to the severe environment isolation issue (see "Known Issues" section), **this step is completely unusable**. OpenCode cannot read files or execute commands, so it cannot initialize the project.
+**Note**: There was previously an environment isolation issue, but it has been fixed. You can now initialize projects normally.
 
 Go to your project directory:
 
@@ -666,19 +698,21 @@ When segmentation faults occur, it's usually because of library version incompat
 - **Temporary Relief**: Executing the `reset` command in the terminal may help, but is not guaranteed to completely solve the issue.
 - **Preventive Measures**: If this issue affects your workflow, consider using a dedicated terminal window for opencode.
 
-### Severe Environment Isolation Issue
+### Severe Environment Isolation Issue (RESOLVED)
 
-- **Problem Description**: There is a severe environment isolation issue when running OpenCode with custom glibc 2.28. OpenCode can write files but cannot read files or execute commands. Basic commands such as `ls`, `pwd`, `whoami`, etc., return empty results or no output.
-- **Impact Scope**: This issue makes OpenCode's core functionality completely unusable, especially:
-  - Unable to read and analyze project files
-  - Unable to execute any shell commands
-  - Step 6.2 (Initialize Project) is completely unusable
-  - Any functionality that requires reading the filesystem or executing commands will fail
-- **Status**: This is a known severe bug, and there is currently no solution.
-- **Important Note**: Due to this issue, **it is not recommended to use this solution in production or any environment that requires actual functionality**. This solution is for research and testing purposes only.
-- **Temporary Suggestion**: If you need to use OpenCode for actual work, it is recommended to:
-  - Upgrade to an operating system that supports higher glibc versions (such as CentOS 8/9 or other modern Linux distributions)
-  - Use containerization solutions (such as Docker) to run OpenCode in an environment that supports new glibc versions
+- **Problem Description**: Previously, there was a severe environment isolation issue when running OpenCode with custom glibc 2.28. OpenCode could write files but could not read files or execute commands. Basic commands such as `ls`, `pwd`, `whoami`, etc., returned empty results or no output, or caused segmentation faults.
+- **Root Cause**: The issue was caused by `LD_LIBRARY_PATH` being set to include custom glibc 2.28 libraries. This environment variable was inherited by opencode's subprocesses (e.g., bash). However, the system's bash is compiled with system glibc 2.17, and attempting to use custom glibc 2.28 libraries causes bash to crash with a segmentation fault.
+- **Solution**: 
+  1. **In `opencode_with_custom_glibc.sh`**: Do NOT set `LD_LIBRARY_PATH`. Since opencode uses a patchelf-modified interpreter that points to custom glibc 2.28, it will automatically find the correct libraries without needing `LD_LIBRARY_PATH`.
+  2. **In `~/.bashrc`**: Add a check for `CURSOR_AGENT` environment variable and clear `LD_LIBRARY_PATH` when it's set. This ensures bash subprocesses use the system default glibc.
+  3. **Terminal Type**: Changed from `TERM=dumb` to `TERM=xterm-256color` to ensure proper command output.
+- **Status**: **RESOLVED** - The issue has been fixed. OpenCode can now read files and execute commands normally.
+- **Debugging Method**: If you encounter similar issues (commands returning no output or segmentation faults):
+  1. Check if `LD_LIBRARY_PATH` contains custom glibc paths: `echo $LD_LIBRARY_PATH`
+  2. Test bash with custom glibc: `LD_LIBRARY_PATH="/path/to/custom/glibc/lib:$LD_LIBRARY_PATH" bash -c 'echo test'` - this should crash
+  3. Verify the fix: Ensure `opencode_with_custom_glibc.sh` does NOT set `LD_LIBRARY_PATH`
+  4. Verify `.bashrc`: Ensure it clears `LD_LIBRARY_PATH` when `CURSOR_AGENT` is set
+  5. Check opencode logs: `tail -f ~/.local/share/opencode/log/*.log` to see if bash commands are executing
 
 ## Troubleshooting
 
@@ -797,6 +831,6 @@ Welcome to fork and submit Issues to improve this guide, but PR Reviews are curr
 
 ---
 
-**Last Updated**: January 13, 2026
+**Last Updated**: January 16, 2026
 
 **Author**: Yida Tao

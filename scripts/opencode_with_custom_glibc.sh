@@ -22,7 +22,7 @@ MODIFIED_OPENCODE="$TEMP_DIR/opencode_modified"
 source /home/taoyida/miniconda3/etc/profile.d/conda.sh
 conda activate torch113pip
 
-echo "Starting opencode with custom glibc 2.28 (ultimate solution)..."
+echo "Starting opencode with custom glibc 2.28..."
 
 # Copy opencode to temporary location
 cp "$OPENCODE_PATH" "$MODIFIED_OPENCODE"
@@ -37,16 +37,22 @@ ORIGINAL_LOCPATH="$LOCPATH"
 ORIGINAL_TERM="$TERM"
 ORIGINAL_TERMCAP="$TERMCAP"
 
-# Set LD_LIBRARY_PATH to ensure using correct libraries
-export LD_LIBRARY_PATH="/home/taoyida/opt/glibc-2.28/lib:/home/taoyida/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH"
+# IMPORTANT: opencode uses custom glibc 2.28 through patchelf-modified interpreter
+# Therefore, we should NOT set LD_LIBRARY_PATH to avoid bash subprocess crashes
+# If LD_LIBRARY_PATH is set, it will be inherited by opencode's subprocesses (e.g., bash)
+# However, the system's bash is compiled with system glibc 2.17, using custom glibc will crash
+# Without setting LD_LIBRARY_PATH, opencode can still run normally (via patchelf interpreter)
+# And bash subprocesses will use the system default glibc, avoiding crashes
 
 # Set safe locale to avoid encoding issues
-# Directly set widely supported locale to avoid running locale command in custom glibc environment
+# Directly set widely supported locale instead of running locale commands in custom glibc environment
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
-# Set terminal type to one that doesn't support mouse events
-export TERM=dumb
+# Set terminal type to one that supports output properly
+# Use xterm-256color instead of dumb to ensure command output works correctly
+# The dumb terminal type may cause some commands to fail to output properly
+export TERM=xterm-256color
 
 # If the system has localized gconv modules, specify LOCPATH as well
 if [ -d "/home/taoyida/opt/glibc-2.28/lib/locale" ]; then
@@ -54,6 +60,7 @@ if [ -d "/home/taoyida/opt/glibc-2.28/lib/locale" ]; then
 fi
 
 # Run the modified opencode and capture exit code
+# Note: Without setting LD_LIBRARY_PATH, opencode will automatically find custom glibc via patchelf-modified interpreter
 "$MODIFIED_OPENCODE" "$@"
 
 # Save return code
