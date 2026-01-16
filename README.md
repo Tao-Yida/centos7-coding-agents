@@ -594,7 +594,7 @@ if [[ -n "$CURSOR_AGENT" ]]; then
     PS1='\u@\h \W \$ '
     # Only keep necessary PATH settings
     export PATH=$HOME/.local/bin:$HOME/bin:$HOME/.opencode/bin:$PATH
-    export PATH="/home/taoyida/miniconda3/bin:$PATH"
+    export PATH="$HOME/miniconda3/bin:$PATH"
     export HF_ENDPOINT=https://hf-mirror.com
     # Ensure output is not buffered
     export PYTHONUNBUFFERED=1
@@ -790,6 +790,30 @@ When segmentation faults occur, it's usually because of library version incompat
 - Avoid running `locale` command in custom glibc environment
 - Set fixed locale environment variables directly, such as `LANG=en_US.UTF-8`
 - Ensure the script has appropriate error handling and environment recovery logic
+
+### Problem 7: libgcc_s.so.1 library dependency issue
+
+**Error message**:
+```
+libgcc_s.so.1 must be installed for pthread_cancel to work
+Aborted (core dumped)
+```
+
+**Problem cause**:
+When OpenCode uses custom glibc 2.28, `libpthread` requires `libgcc_s.so.1` to support the `pthread_cancel` function.
+Especially when performing complex tasks like file searching and parallel processing, if this library cannot be found, it will cause process crashes.
+
+**Solutions**:
+The startup script `opencode_with_custom_glibc.sh` automatically handles this issue:
+- Sets `LD_LIBRARY_PATH` to include the lib64 path of GCC 9.5.0
+- Ensures only GCC library paths are added, not custom glibc paths, to avoid bash subprocess crashes
+- This allows OpenCode to find `libgcc_s.so.1`, while system commands still use system glibc
+
+**Verification method**:
+```bash
+# Check if libgcc_s.so.1 exists
+ls -la ~/opt/gcc-9.5.0/lib64/libgcc_s.so.1
+```
 
 ## Summary
 

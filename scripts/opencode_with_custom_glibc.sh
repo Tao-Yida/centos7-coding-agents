@@ -15,11 +15,11 @@ echo -e '\033[?1000l\033[?1002l\033[?1003l\033[?1005l\033[?1006l' 2>/dev/null ||
 
 # Create a temporary directory to store the modified opencode
 TEMP_DIR=$(mktemp -d)
-OPENCODE_PATH="/home/taoyida/.opencode/bin/opencode"
+OPENCODE_PATH="$HOME/.opencode/bin/opencode"
 MODIFIED_OPENCODE="$TEMP_DIR/opencode_modified"
 
 # Activate torch113pip environment to ensure access to patchelf
-source /home/taoyida/miniconda3/etc/profile.d/conda.sh
+source "$HOME/miniconda3/etc/profile.d/conda.sh"
 conda activate torch113pip
 
 echo "Starting opencode with custom glibc 2.28..."
@@ -28,7 +28,7 @@ echo "Starting opencode with custom glibc 2.28..."
 cp "$OPENCODE_PATH" "$MODIFIED_OPENCODE"
 
 # Use patchelf to modify the interpreter to our custom glibc
-patchelf --set-interpreter "/home/taoyida/opt/glibc-2.28/lib/ld-linux-x86-64.so.2" "$MODIFIED_OPENCODE"
+patchelf --set-interpreter "$HOME/opt/glibc-2.28/lib/ld-linux-x86-64.so.2" "$MODIFIED_OPENCODE"
 
 # Save original environment variables
 ORIGINAL_LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
@@ -55,12 +55,20 @@ export LC_ALL=en_US.UTF-8
 export TERM=xterm-256color
 
 # If the system has localized gconv modules, specify LOCPATH as well
-if [ -d "/home/taoyida/opt/glibc-2.28/lib/locale" ]; then
-    export LOCPATH="/home/taoyida/opt/glibc-2.28/lib/locale"
+if [ -d "$HOME/opt/glibc-2.28/lib/locale" ]; then
+    export LOCPATH="$HOME/opt/glibc-2.28/lib/locale"
 fi
 
+# Set temporary LD_LIBRARY_PATH to include gcc lib path, to support pthread_cancel
+# Note: This setting will be inherited by opencode's subprocesses, but we only add gcc paths, not glibc paths
+# So bash subprocesses will still use system glibc, avoiding crashes
+#
+# IMPORTANT DISCOVERY: When opencode uses custom glibc 2.28, libpthread needs libgcc_s.so.1 to support pthread_cancel
+# If this path is not set, "libgcc_s.so.1 must be installed for pthread_cancel to work" error will occur
+# Especially when performing complex tasks like file searching that require parallel processing
+export LD_LIBRARY_PATH="$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH"
+
 # Run the modified opencode and capture exit code
-# Note: Without setting LD_LIBRARY_PATH, opencode will automatically find custom glibc via patchelf-modified interpreter
 "$MODIFIED_OPENCODE" "$@"
 
 # Save return code
