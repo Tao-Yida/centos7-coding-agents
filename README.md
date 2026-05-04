@@ -4,7 +4,7 @@
 
 # Running OpenCode with Custom glibc 2.28 on CentOS 7
 
-**Note:** If you only need to install OpenCode without upgrading glibc or gcc, the simpler method in `https://github.com/pedropombeiro/opencode-legacy-glibc` is recommended. This repository’s custom glibc approach remains useful for Cursor CLI Agent installation on CentOS 7; see `https://github.com/Tao-Yida/cursorcli-glibc-shim`.
+**Note:** If you only need to install OpenCode without upgrading glibc or gcc, the simpler method in [@pedropombeiro/opencode-legacy-glibc](https://github.com/pedropombeiro/opencode-legacy-glibc) is recommended. This repository’s custom glibc approach remains useful for Cursor CLI Agent installation on CentOS 7; see [cursorcli-glibc-shim](https://github.com/Tao-Yida/cursorcli-glibc-shim).
 
 ## Table of Contents
 

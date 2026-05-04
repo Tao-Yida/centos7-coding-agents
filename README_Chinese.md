@@ -4,7 +4,7 @@
 
 # 在 CentOS 7 上使用自定义 glibc 2.28 运行 OpenCode
 
-**提示**：如果你仅需安装 OpenCode 而不升级 glibc 或 gcc，建议使用 `https://github.com/pedropombeiro/opencode-legacy-glibc` 的更简洁方法。本仓库的自定义 glibc 方案仍适用于 CentOS 7 上的 Cursor CLI Agent 安装，详情请参见 `https://github.com/Tao-Yida/cursorcli-glibc-shim`。
+**提示**：如果你仅需安装 OpenCode 而不升级 glibc 或 gcc，建议使用 [@pedropombeiro/opencode-legacy-glibc](https://github.com/pedropombeiro/opencode-legacy-glibc) 的更简洁方法。本仓库的自定义 glibc 方案仍适用于 CentOS 7 上的 Cursor CLI Agent 安装，详情请参见 [cursorcli-glibc-shim](https://github.com/Tao-Yida/cursorcli-glibc-shim)。
 
 ## 目录
 
