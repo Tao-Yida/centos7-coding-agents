@@ -1,93 +1,120 @@
 #!/bin/bash
+#
+# Run OpenCode with custom glibc 2.28 on CentOS 7
+#
+# This script uses patchelf to modify the OpenCode binary's interpreter path
+# to point to a custom glibc 2.28 compiled in user's $HOME directory.
+#
+# Prerequisites:
+#   - glibc 2.28 installed at $HOME/opt/glibc-2.28
+#   - GCC 9.5.0 installed at $HOME/opt/gcc-9.5.0
+#   - patchelf installed (conda, pip, or compiled from source)
+#   - OpenCode installed (typically at ~/.opencode/bin/opencode)
+#
+# Key design decisions:
+#   - Uses patchelf to modify interpreter (NOT set LD_LIBRARY_PATH)
+#   - Only GCC lib64 path added to LD_LIBRARY_PATH for libgcc_s.so.1
+#   - Terminal mouse tracking disabled/enabled for clean state
+#
 
-# Define cleanup function
+set -euo pipefail
+
+echo "[opencode] Starting OpenCode with custom glibc 2.28..."
+
+# ─── Configuration ───────────────────────────────────────────────────────────
+
+OPENCODE_BIN="${HOME}/.opencode/bin/opencode"
+GLIBC_LINKER="${HOME}/opt/glibc-2.28/lib/ld-linux-x86-64.so.2"
+
+# ─── Validation ──────────────────────────────────────────────────────────────
+
+if [ ! -f "${OPENCODE_BIN}" ]; then
+  echo "[opencode] ERROR: OpenCode binary not found: ${OPENCODE_BIN}" >&2
+  echo "[opencode] Please install OpenCode first: curl -fsSL https://opencode.ai/install | bash" >&2
+  exit 1
+fi
+
+if [ ! -x "${GLIBC_LINKER}" ]; then
+  echo "[opencode] ERROR: Custom glibc not found at: ${GLIBC_LINKER}" >&2
+  echo "[opencode] Please compile glibc 2.28 first (see README.md)." >&2
+  exit 1
+fi
+
+if ! command -v patchelf >/dev/null 2>&1; then
+  echo "[opencode] ERROR: patchelf not found." >&2
+  echo "[opencode] Install it: conda install -c conda-forge patchelf" >&2
+  echo "[opencode]          or: pip install patchelf" >&2
+  exit 1
+fi
+
+# ─── Terminal cleanup trap ───────────────────────────────────────────────────
+
 cleanup_terminal() {
-    # Reset terminal to original state, enable mouse event tracking
     echo -e '\033[?1000h\033[?1002h\033[?1003h' 2>/dev/null || true
-    echo "Terminal reset to original state"
 }
-
-# Set trap to ensure cleanup is performed when script exits
 trap cleanup_terminal EXIT INT TERM
 
-# Reset terminal state, disable mouse tracking
+# Disable mouse tracking
 echo -e '\033[?1000l\033[?1002l\033[?1003l\033[?1005l\033[?1006l' 2>/dev/null || true
 
-# Create a temporary directory to store the modified opencode
+# ─── Patch interpreter via patchelf ──────────────────────────────────────────
+# Create a temp copy so the original binary stays unmodified
+
 TEMP_DIR=$(mktemp -d)
-OPENCODE_PATH="$HOME/.opencode/bin/opencode"
-MODIFIED_OPENCODE="$TEMP_DIR/opencode_modified"
+MODIFIED_BIN="${TEMP_DIR}/opencode_modified"
+cp "${OPENCODE_BIN}" "${MODIFIED_BIN}"
+patchelf --set-interpreter "${GLIBC_LINKER}" "${MODIFIED_BIN}"
 
-# Activate torch113pip environment to ensure access to patchelf
-source "$HOME/miniconda3/etc/profile.d/conda.sh"
-conda activate torch113pip
+# ─── Save original environment ───────────────────────────────────────────────
 
-echo "Starting opencode with custom glibc 2.28..."
+ORIGINAL_LD_LIBRARY_PATH="${LD_LIBRARY_PATH-}"
+ORIGINAL_LANG="${LANG-}"
+ORIGINAL_LC_ALL="${LC_ALL-}"
+ORIGINAL_LOCPATH="${LOCPATH-}"
+ORIGINAL_TERM="${TERM-}"
 
-# Copy opencode to temporary location
-cp "$OPENCODE_PATH" "$MODIFIED_OPENCODE"
+# ─── Set safe runtime environment ────────────────────────────────────────────
+#
+# IMPORTANT: Do NOT add glibc-2.28 to LD_LIBRARY_PATH!
+# OpenCode uses patchelf-modified interpreter to find custom glibc 2.28.
+# Setting LD_LIBRARY_PATH with custom glibc causes bash subprocesses (which
+# are compiled against system glibc 2.17) to segfault.
+#
+# Only GCC lib64 path is added for libgcc_s.so.1 (pthread_cancel support).
+#
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
 
-# Use patchelf to modify the interpreter to our custom glibc
-patchelf --set-interpreter "$HOME/opt/glibc-2.28/lib/ld-linux-x86-64.so.2" "$MODIFIED_OPENCODE"
-
-# Save original environment variables
-ORIGINAL_LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
-ORIGINAL_LANG="$LANG"
-ORIGINAL_LOCPATH="$LOCPATH"
-ORIGINAL_TERM="$TERM"
-ORIGINAL_TERMCAP="$TERMCAP"
-
-# IMPORTANT: opencode uses custom glibc 2.28 through patchelf-modified interpreter
-# Therefore, we should NOT set LD_LIBRARY_PATH to avoid bash subprocess crashes
-# If LD_LIBRARY_PATH is set, it will be inherited by opencode's subprocesses (e.g., bash)
-# However, the system's bash is compiled with system glibc 2.17, using custom glibc will crash
-# Without setting LD_LIBRARY_PATH, opencode can still run normally (via patchelf interpreter)
-# And bash subprocesses will use the system default glibc, avoiding crashes
-
-# Set safe locale to avoid encoding issues
-# Directly set widely supported locale instead of running locale commands in custom glibc environment
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
-
-# Set terminal type to one that supports output properly
-# Use xterm-256color instead of dumb to ensure command output works correctly
-# The dumb terminal type may cause some commands to fail to output properly
-export TERM=xterm-256color
-
-# If the system has localized gconv modules, specify LOCPATH as well
-if [ -d "$HOME/opt/glibc-2.28/lib/locale" ]; then
-    export LOCPATH="$HOME/opt/glibc-2.28/lib/locale"
+if [ -d "${HOME}/opt/glibc-2.28/lib/locale" ]; then
+    export LOCPATH="${HOME}/opt/glibc-2.28/lib/locale"
 fi
 
-# Set temporary LD_LIBRARY_PATH to include gcc lib path, to support pthread_cancel
-# Note: This setting will be inherited by opencode's subprocesses, but we only add gcc paths, not glibc paths
-# So bash subprocesses will still use system glibc, avoiding crashes
-#
-# IMPORTANT DISCOVERY: When opencode uses custom glibc 2.28, libpthread needs libgcc_s.so.1 to support pthread_cancel
-# If this path is not set, "libgcc_s.so.1 must be installed for pthread_cancel to work" error will occur
-# Especially when performing complex tasks like file searching that require parallel processing
-export LD_LIBRARY_PATH="$HOME/opt/gcc-9.5.0/lib64:$LD_LIBRARY_PATH"
+# Add GCC lib64 path so the patchelf'd binary can find libgcc_s.so.1
+export LD_LIBRARY_PATH="${HOME}/opt/gcc-9.5.0/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-# Run the modified opencode and capture exit code
-"$MODIFIED_OPENCODE" "$@"
+# ─── Launch OpenCode ─────────────────────────────────────────────────────────
 
-# Save return code
+"${MODIFIED_BIN}" "$@"
 RETURN_CODE=$?
 
-# Restore original environment variables
-export LD_LIBRARY_PATH="$ORIGINAL_LD_LIBRARY_PATH"
-export LANG="$ORIGINAL_LANG"
-export LOCPATH="$ORIGINAL_LOCPATH"
-if [ -n "$ORIGINAL_LOCPATH" ]; then
-    export LOCPATH="$ORIGINAL_LOCPATH"
+# ─── Restore environment ─────────────────────────────────────────────────────
+
+export LD_LIBRARY_PATH="${ORIGINAL_LD_LIBRARY_PATH}"
+[ -n "${ORIGINAL_LANG}" ] && export LANG="${ORIGINAL_LANG}"
+if [ -n "${ORIGINAL_LC_ALL}" ]; then
+    export LC_ALL="${ORIGINAL_LC_ALL}"
 else
-    unset LOCPATH
+    unset LC_ALL || true
 fi
-export TERM="$ORIGINAL_TERM"
+if [ -n "${ORIGINAL_LOCPATH}" ]; then
+    export LOCPATH="${ORIGINAL_LOCPATH}"
+else
+    unset LOCPATH || true
+fi
+[ -n "${ORIGINAL_TERM}" ] && export TERM="${ORIGINAL_TERM}"
 
-# Clean up temporary files, but not in current process, using subshell instead
-( sleep 0.2; rm -rf "$TEMP_DIR" ) &
+# Clean up temp files asynchronously
+( sleep 0.2; rm -rf "${TEMP_DIR}" ) &
 
-echo "opencode has exited, environment variables restored"
-# Note: Terminal cleanup will be automatically executed when trap catches EXIT signal
-exit $RETURN_CODE
+echo "[opencode] OpenCode has exited, environment restored."
+exit ${RETURN_CODE}
