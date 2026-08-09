@@ -27,6 +27,7 @@
 - [Agent: Cursor CLI](#agent-cursor-cli)
 - [Agent: Kimi Code](#agent-kimi-code)
 - [Agent: ZCode (Remote SSH)](#agent-zcode-remote-ssh)
+- [Agent: Codex CLI & opencodex (Provider Switching)](#agent-codex-cli--opencodex-provider-switching)
 - [How to Add a New Agent](#how-to-add-a-new-agent)
 - [Security Enhancement & Defensive Programming](#security-enhancement--defensive-programming)
 - [Known Issues](#known-issues)
@@ -44,6 +45,7 @@
 | [Cursor CLI](https://www.cursor.com) | `ld-linux` direct invocation | [`scripts/cursor_cli_with_custom_glibc.sh`](scripts/cursor_cli_with_custom_glibc.sh) | ✅ Active |
 | [Kimi Code](https://kimi.moonshot.cn) | `ld-linux` direct invocation | [`scripts/kimi_with_custom_glibc.sh`](scripts/kimi_with_custom_glibc.sh) | ✅ Active |
 | [ZCode](https://zcode.z.ai) (Remote SSH) | `ld-linux` binary replacement | [`scripts/node`](scripts/node) | ✅ Active |
+| [Codex CLI](https://github.com/openai/codex) (provider switching via [opencodex](https://github.com/lidge-jun/opencodex)) | `ld-linux` direct invocation (bun wrapper) | — (see [guides](#agent-codex-cli--opencodex-provider-switching)) | ✅ Active |
 | **Your Agent?** | Your method | `scripts/{agent}_with_custom_glibc.sh` | 🔜 [PRs Welcome](CONTRIBUTING.md) |
 
 ---
@@ -473,6 +475,35 @@ This script is a drop-in replacement for `~/.zcode/server/node`. It:
 
 ---
 
+## Agent: Codex CLI & opencodex (Provider Switching)
+
+### Overview
+
+[Codex CLI](https://github.com/openai/codex) **installs and runs on CentOS 7 without any glibc workaround** — the problem only appears when you want to **switch service providers**. The [opencodex](https://github.com/lidge-jun/opencodex) proxy used for provider switching requires Node ≥ 18 and a bundled Bun runtime, both of which need glibc 2.18–2.28 — unavailable on CentOS 7's default glibc 2.17 (the `GLIBC_2.2x not found` error).
+
+**Method**: `ld-linux` direct invocation — the same approach used by Cursor CLI and Kimi Code. A bash wrapper (`~/.local/bin/bun`) launches Bun via the custom glibc 2.28 loader (`$HOME/opt/glibc-2.28/lib/ld-linux-x86-64.so.2 --library-path ...`), and the opencodex proxy runs from source with that wrapper.
+
+**Verified on**: CentOS 7 (glibc 2.17) · codex-cli 0.147.0 · opencodex 2.11.1 · OpenCode Go provider · 2026-08-09
+
+### Guides
+
+Two bilingual handbooks document the complete, tested procedure (environment baseline, source install, proxy startup, provider/model routing, guardian approval fixes, session history recovery, and the full list of pitfalls):
+
+| Topic | Chinese | English |
+|---|---|---|
+| opencodex deployment on CentOS 7 (source-mode install via the glibc-2.28 bun wrapper, proxy startup, provider & model routing, 12 verified pitfalls, session migration) | [opencodex-centos7-handbook.md](opencodex-centos7-handbook.md) | [opencodex-centos7-handbook-EN.md](opencodex-centos7-handbook-EN.md) |
+| Codex provider switching (deepseek → Opencode Go) & session history recovery (label migration) | [Codex提供商切换与历史记录恢复.md](Codex提供商切换与历史记录恢复.md) | [Codex-Provider-Switching-and-History-Recovery-EN.md](Codex-Provider-Switching-and-History-Recovery-EN.md) |
+
+### Key Takeaways
+
+- **Installing Codex CLI itself is fine on CentOS 7** — no glibc adaptation needed.
+- **Switching providers requires opencodex**, whose Node/Bun stack cannot run on glibc 2.17. Fix: run it via the glibc-2.28 loader wrapper. **Never** `export LD_LIBRARY_PATH` to the custom glibc — mixing glibc 2.28 with system 2.17 segfaults (exit 139).
+- **No user-level systemd on CentOS 7** — `ocx service install` / `ocx restore back` always fail (`systemctl --user` → `Failed to get D-Bus connection`); use the direct-call injection script and a `crontab @reboot` entry instead.
+- **Do not use `ocx codex-shim install` on CentOS 7** — its ensure step spawns bare Bun, fails on glibc, and rolls back the config injection while stopping the proxy.
+- **History recovery**: Codex filters the resume list exactly by `model_provider` (openai/codex issue [#15494](https://github.com/openai/codex)); rollout JSONL files are never lost. Rewrite the `model_provider` label in both the JSONL first line (regex, no JSON round-trip) and `state_5.sqlite`, then restart app-server in the right order (DB first, then restart) — otherwise the app-server's cached tags get written back.
+
+---
+
 ## How to Add a New Agent
 
 We welcome Pull Requests adding support for new coding agents!
@@ -613,6 +644,6 @@ This project started as a single-agent solution for OpenCode and has grown into 
 
 ---
 
-**Last Updated**: June 13, 2026
+**Last Updated**: August 9, 2026
 
 **Author**: Yida Tao

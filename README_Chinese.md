@@ -27,6 +27,7 @@
 - [Agent：Cursor CLI](#agentcursor-cli)
 - [Agent：Kimi Code](#agentkimi-code)
 - [Agent：ZCode（远程 SSH）](#agentzcode远程-ssh)
+- [Agent：Codex CLI 与 opencodex（提供商切换）](#agentcodex-cli-与-opencodex提供商切换)
 - [如何添加新的 Agent](#如何添加新的-agent)
 - [安全增强与防御性编程](#安全增强与防御性编程)
 - [已知问题](#已知问题)
@@ -44,6 +45,7 @@
 | [Cursor CLI](https://www.cursor.com) | `ld-linux` 直接调用 | [`scripts/cursor_cli_with_custom_glibc.sh`](scripts/cursor_cli_with_custom_glibc.sh) | ✅ 维护中 |
 | [Kimi Code](https://kimi.moonshot.cn) | `ld-linux` 直接调用 | [`scripts/kimi_with_custom_glibc.sh`](scripts/kimi_with_custom_glibc.sh) | ✅ 维护中 |
 | [ZCode](https://zcode.z.ai)（远程 SSH） | `ld-linux` 二进制替换 | [`scripts/node`](scripts/node) | ✅ 维护中 |
+| [Codex CLI](https://github.com/openai/codex)（通过 [opencodex](https://github.com/lidge-jun/opencodex) 切换提供商） | `ld-linux` 直接调用（bun 包装脚本） | —（详见[指南](#agentcodex-cli-与-opencodex提供商切换)） | ✅ 维护中 |
 | **你的 Agent？** | 你的方法 | `scripts/{agent}_with_custom_glibc.sh` | 🔜 [欢迎 PR](CONTRIBUTING.md) |
 
 ---
@@ -473,6 +475,35 @@ chmod +x ~/.zcode/server/node
 
 ---
 
+## Agent：Codex CLI 与 opencodex（提供商切换）
+
+### 概述
+
+[Codex CLI](https://github.com/openai/codex) 在 CentOS 7 上**安装本身没有问题**，无需任何 glibc 适配。兼容性问题出现在**切换服务提供商**时：用于提供商切换的 [opencodex](https://github.com/lidge-jun/opencodex) 代理要求 Node ≥ 18 并内置 Bun 运行时，两者都需要 glibc 2.18–2.28——而 CentOS 7 默认 glibc 只有 2.17（报 `GLIBC_2.2x not found`）。
+
+**方法**：`ld-linux` 直接调用——与 Cursor CLI、Kimi Code 所用方案相同。用 bash 包装脚本（`~/.local/bin/bun`）通过自定义 glibc 2.28 加载器（`$HOME/opt/glibc-2.28/lib/ld-linux-x86-64.so.2 --library-path ...`）启动 Bun，opencodex 代理以源码模式运行。
+
+**已验证环境**：CentOS 7（glibc 2.17）· codex-cli 0.147.0 · opencodex 2.11.1 · OpenCode Go provider · 2026-08-09
+
+### 指南文档
+
+两份双语手册记录了完整且经过实测的操作流程（环境基线、源码安装、代理启动、提供商/模型路由、guardian 审批修复、历史会话恢复及全部已踩坑清单）：
+
+| 主题 | 中文 | 英文 |
+|---|---|---|
+| opencodex 在 CentOS 7 上的部署（glibc-2.28 bun 包装脚本源码安装、代理启动、提供商与模型路由、12 个已踩坑、会话迁移） | [opencodex-centos7-handbook.md](opencodex-centos7-handbook.md) | [opencodex-centos7-handbook-EN.md](opencodex-centos7-handbook-EN.md) |
+| Codex 提供商切换（deepseek → Opencode Go）与历史会话恢复（标签迁移） | [Codex提供商切换与历史记录恢复.md](Codex提供商切换与历史记录恢复.md) | [Codex-Provider-Switching-and-History-Recovery-EN.md](Codex-Provider-Switching-and-History-Recovery-EN.md) |
+
+### 要点总结
+
+- **Codex CLI 本身在 CentOS 7 上安装无问题**——不需要 glibc 适配。
+- **切换提供商需要 opencodex**，其 Node/Bun 技术栈在 glibc 2.17 上无法运行。解决：通过 glibc-2.28 加载器包装脚本运行。**绝不能** `export LD_LIBRARY_PATH` 指向自定义 glibc——glibc 2.28 与系统 2.17 混载会段错误崩溃（exit 139）。
+- **CentOS 7 无用户级 systemd**——`ocx service install` / `ocx restore back` 必然失败（`systemctl --user` → `Failed to get D-Bus connection`）；改用直接调用注入脚本 + `crontab @reboot` 开机自启。
+- **CentOS 7 上不要使用 `ocx codex-shim install`**——其 ensure 步骤会 spawn 裸 Bun，在 glibc 上失败并回滚配置注入、关闭代理。
+- **历史会话恢复**：Codex 按 `model_provider` 精确过滤恢复列表（openai/codex issue [#15494](https://github.com/openai/codex)）；rollout JSONL 文件从未丢失。需按正确顺序重写 JSONL 首行（正则替换，禁止 JSON round-trip）与 `state_5.sqlite` 中的 `model_provider` 标签，再重启 app-server（先改库、后重启）——否则 app-server 缓存的旧标签会被写回。
+
+---
+
 ## 如何添加新的 Agent
 
 我们欢迎提交 Pull Request 来添加新的编程 Agent！
@@ -597,6 +628,6 @@ ls -la ~/opt/gcc-9.5.0/lib64/libgcc_s.so.1
 
 ---
 
-**最后更新**：2026年6月13日
+**最后更新**：2026年8月9日
 
 **作者**：Yida Tao
